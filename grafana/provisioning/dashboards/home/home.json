@@ -1518,7 +1518,7 @@
     {
       "id": 26,
       "type": "row",
-      "title": "Wi-Fi",
+      "title": "Wi-Fi и точки доступа",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1530,11 +1530,11 @@
     },
     {
       "id": 27,
-      "type": "timeseries",
-      "title": "Клиенты Wi-Fi",
+      "type": "stat",
+      "title": "Точек на связи",
       "gridPos": {
-        "h": 7,
-        "w": 8,
+        "h": 4,
+        "w": 6,
         "x": 0,
         "y": 62
       },
@@ -1544,67 +1544,67 @@
       },
       "targets": [
         {
-          "expr": "count by (routerboard_name) (mktxp_wlan_clients_signal_strength)",
+          "expr": "count(mktxp_capsman_remote_caps_info)",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
-          },
-          "legendFormat": "{{routerboard_name}}"
+          }
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 12,
-            "gradientMode": "opacity",
-            "showPoints": "never",
-            "spanNulls": true,
-            "axisPlacement": "auto",
-            "axisLabel": "",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
+          "custom": {},
           "color": {
             "mode": "palette-classic"
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3
+              },
+              {
+                "color": "green",
+                "value": 4
+              }
+            ]
+          },
+          "decimals": 0
         },
         "overrides": []
       },
       "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        },
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true,
+        "reduceOptions": {
           "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        }
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "description": "Сколько клиентов подключено к Wi-Fi каждого роутера."
+      "description": "Сколько CAP зарегистрировано на CAPsMAN. Всего в сети 4."
     },
     {
       "id": 28,
-      "type": "table",
-      "title": "Сигнал клиентов",
+      "type": "stat",
+      "title": "Клиентов Wi-Fi",
       "gridPos": {
-        "h": 7,
-        "w": 16,
-        "x": 8,
+        "h": 4,
+        "w": 6,
+        "x": 6,
         "y": 62
       },
       "datasource": {
@@ -1613,7 +1613,303 @@
       },
       "targets": [
         {
-          "expr": "mktxp_wlan_clients_signal_strength",
+          "expr": "sum(mktxp_capsman_registrations_count)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "description": "Всего клиентов на всех радиоточках."
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Клиентов на 5 ГГц",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 62
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "sum(mktxp_capsman_registrations_count{interface=~\".*-5g\"})",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "description": "Клиенты на диапазоне 5 ГГц."
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "Клиентов на 2.4 ГГц",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 62
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "sum(mktxp_capsman_registrations_count{interface=~\".*-2g\"})",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "description": "Клиенты на диапазоне 2.4 ГГц."
+    },
+    {
+      "id": 31,
+      "type": "state-timeline",
+      "title": "Точки на связи",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 66
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_capsman_remote_caps_info",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "legendFormat": "{{identity}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "нет",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "есть",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "alignValue": "center",
+        "rowHeight": 0.85,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "description": "Дорожка на каждую точку доступа. Пропуск данных означает, что точка отвалилась."
+    },
+    {
+      "id": 32,
+      "type": "bargauge",
+      "title": "Клиенты по радио",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 66
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "sum by (interface) (mktxp_capsman_registrations_count)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "legendFormat": "{{interface}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 6
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "minVizWidth": 8
+      },
+      "description": "Сколько клиентов обслуживает каждое радио."
+    },
+    {
+      "id": 33,
+      "type": "table",
+      "title": "Точки доступа",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 72
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_capsman_remote_caps_info",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -1640,7 +1936,68 @@
           "mappings": [],
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "instance"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "job"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "routerboard_address"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "routerboard_name"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "showHeader": true,
@@ -1654,10 +2011,199 @@
           "fields": ""
         }
       },
-      "description": "Уровень сигнала по каждому клиенту Wi-Fi."
+      "description": "Список CAP, зарегистрированных на CAPsMAN."
     },
     {
-      "id": 29,
+      "id": 34,
+      "type": "table",
+      "title": "Клиенты Wi-Fi",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 72
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "mktxp_capsman_clients_devices_info",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "instance"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "job"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "routerboard_address"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "routerboard_name"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "description": "Клиенты CAPsMAN: радио, SSID, сигнал, скорости, аптайм."
+    },
+    {
+      "id": 35,
+      "type": "timeseries",
+      "title": "Трафик клиентов (топ-5)",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 80
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "targets": [
+        {
+          "expr": "topk(5, sum by (dhcp_name) (rate(mktxp_capsman_clients_rx_bytes_total[5m]) + rate(mktxp_capsman_clients_tx_bytes_total[5m])) * 8)",
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "legendFormat": "{{dhcp_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 12,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      },
+      "description": "Пять самых активных клиентов Wi-Fi по суммарной скорости."
+    },
+    {
+      "id": 36,
       "type": "row",
       "title": "LAN",
       "collapsed": false,
@@ -1665,19 +2211,19 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 87
       },
       "panels": []
     },
     {
-      "id": 30,
+      "id": 37,
       "type": "timeseries",
       "title": "Трафик по портам",
       "gridPos": {
         "h": 8,
         "w": 16,
         "x": 0,
-        "y": 70
+        "y": 88
       },
       "datasource": {
         "type": "prometheus",
@@ -1739,14 +2285,14 @@
       "description": "Суммарный трафик по Ethernet-портам роутера."
     },
     {
-      "id": 31,
+      "id": 38,
       "type": "stat",
       "title": "DHCP-аренды",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 70
+        "y": 88
       },
       "datasource": {
         "type": "prometheus",
@@ -1791,7 +2337,7 @@
       "description": "Активные аренды DHCP в LAN."
     },
     {
-      "id": 32,
+      "id": 39,
       "type": "row",
       "title": "Малина (10.0.0.9)",
       "collapsed": false,
@@ -1799,19 +2345,19 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 78
+        "y": 96
       },
       "panels": []
     },
     {
-      "id": 33,
+      "id": 40,
       "type": "timeseries",
       "title": "CPU малины",
       "gridPos": {
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 79
+        "y": 97
       },
       "datasource": {
         "type": "prometheus",
@@ -1873,14 +2419,14 @@
       "description": "Загрузка CPU Raspberry Pi."
     },
     {
-      "id": 34,
+      "id": 41,
       "type": "timeseries",
       "title": "Память малины",
       "gridPos": {
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 79
+        "y": 97
       },
       "datasource": {
         "type": "prometheus",
@@ -1942,14 +2488,14 @@
       "description": "Использование оперативной памяти."
     },
     {
-      "id": 35,
+      "id": 42,
       "type": "stat",
       "title": "Диск малины",
       "gridPos": {
         "h": 6,
         "w": 4,
         "x": 16,
-        "y": 79
+        "y": 97
       },
       "datasource": {
         "type": "prometheus",
@@ -1994,14 +2540,14 @@
       "description": "Занято места на корневом разделе."
     },
     {
-      "id": 36,
+      "id": 43,
       "type": "stat",
       "title": "Температура малины",
       "gridPos": {
         "h": 6,
         "w": 4,
         "x": 20,
-        "y": 79
+        "y": 97
       },
       "datasource": {
         "type": "prometheus",
@@ -2046,7 +2592,7 @@
       "description": "Температура SoC."
     },
     {
-      "id": 37,
+      "id": 44,
       "type": "row",
       "title": "Сервер туннеля (185.42.163.200)",
       "collapsed": false,
@@ -2054,19 +2600,19 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 85
+        "y": 103
       },
       "panels": []
     },
     {
-      "id": 38,
+      "id": 45,
       "type": "timeseries",
       "title": "CPU сервера",
       "gridPos": {
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 86
+        "y": 104
       },
       "datasource": {
         "type": "prometheus",
@@ -2128,14 +2674,14 @@
       "description": "Загрузка CPU сервера."
     },
     {
-      "id": 39,
+      "id": 46,
       "type": "timeseries",
       "title": "Память сервера",
       "gridPos": {
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 86
+        "y": 104
       },
       "datasource": {
         "type": "prometheus",
@@ -2197,14 +2743,14 @@
       "description": "Использование оперативной памяти."
     },
     {
-      "id": 40,
+      "id": 47,
       "type": "stat",
       "title": "Диск сервера",
       "gridPos": {
         "h": 6,
         "w": 4,
         "x": 16,
-        "y": 86
+        "y": 104
       },
       "datasource": {
         "type": "prometheus",
@@ -2249,14 +2795,14 @@
       "description": "Занято места на корневом разделе."
     },
     {
-      "id": 41,
+      "id": 48,
       "type": "stat",
       "title": "Load average",
       "gridPos": {
         "h": 6,
         "w": 4,
         "x": 20,
-        "y": 86
+        "y": 104
       },
       "datasource": {
         "type": "prometheus",
@@ -2301,14 +2847,14 @@
       "description": "Средняя нагрузка за 1 минуту."
     },
     {
-      "id": 42,
+      "id": 49,
       "type": "timeseries",
       "title": "Сеть сервера",
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 92
+        "y": 110
       },
       "datasource": {
         "type": "prometheus",
@@ -2379,14 +2925,14 @@
       "description": "Трафик на внешнем интерфейсе ens3."
     },
     {
-      "id": 43,
+      "id": 50,
       "type": "stat",
       "title": "Сервер работает",
       "gridPos": {
         "h": 7,
         "w": 6,
         "x": 12,
-        "y": 92
+        "y": 110
       },
       "datasource": {
         "type": "prometheus",
@@ -2431,14 +2977,14 @@
       "description": "Аптайм сервера."
     },
     {
-      "id": 44,
+      "id": 51,
       "type": "stat",
       "title": "Сервер доступен",
       "gridPos": {
         "h": 7,
         "w": 6,
         "x": 18,
-        "y": 92
+        "y": 110
       },
       "datasource": {
         "type": "prometheus",
