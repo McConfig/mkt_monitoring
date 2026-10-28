@@ -1909,7 +1909,7 @@
       },
       "targets": [
         {
-          "expr": "mktxp_capsman_remote_caps_info",
+          "expr": "(mktxp_capsman_remote_caps_info * on(identity) group_left(newest_version) label_replace(mktxp_system_update_available, \"identity\", \"$1\", \"routerboard_name\", \"(.+)\")) or (label_replace(mktxp_capsman_remote_caps_info, \"newest_version\", \"н/д\", \"\", \"\") unless on(identity) label_replace(mktxp_system_update_available, \"identity\", \"$1\", \"routerboard_name\", \"(.+)\"))",
           "refId": "A",
           "datasource": {
             "type": "prometheus",
@@ -1950,7 +1950,7 @@
           "fields": ""
         }
       },
-      "description": "Список CAP, зарегистрированных на CAPsMAN.",
+      "description": "CAP, зарегистрированные на CAPsMAN: текущая прошивка и доступная для обновления.",
       "transformations": [
         {
           "id": "labelsToFields",
@@ -1979,7 +1979,8 @@
             "indexByName": {
               "identity": 0,
               "base_mac": 1,
-              "version": 2
+              "version": 2,
+              "newest_version": 3
             }
           }
         }
