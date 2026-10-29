@@ -176,6 +176,127 @@ docker-compose up -d
 
 Логин и пароль по умолчанию `admin`:`admin`
 
+## Логи роутеров
+
+Все роутеры отправляют журналы на сервер мониторинга по syslog. Цепочка:
+RouterOS → syslog-ng (`10.0.0.9:514/udp`) → promtail (`:1514`) → Loki →
+Grafana. Локально на роутерах остаются память и диск, поэтому журнал доступен
+и без сервера.
+
+### Что настроено на роутерах
+
+Единый набор правил логирования на всех устройствах:
+
+| Темы | Действие | Куда |
+|---|---|---|
+| `info`, `error`, `warning`, `critical` | `remote` | Loki |
+| `info` | `memory` | локальный журнал в памяти |
+| `error`, `warning`, `critical` | `disk` | файл `log.0.txt` на флешке |
+
+Правила по отдельным темам (`firewall`, `account`, `caps`, `wireless`) не
+нужны: любое сообщение уже имеет одну из важностей `info`/`error`/`warning`/
+`critical`, а тема передаётся в заголовке syslog. Дублирующие правила давали
+по две записи на каждое событие.
+
+Действие `remote` настраивается так:
+
+```bash
+/system logging action set [find name=remote] remote=10.0.0.9 remote-port=514 \
+  remote-protocol=udp remote-log-format=syslog syslog-time-format=iso8601 \
+  syslog-severity=auto syslog-facility=local0 add-topics-string=yes
+```
+
+- `remote-log-format=syslog` — RouterOS передаёт своё имя (`/system identity`).
+  Без этого syslog-ng подставляет reverse-DNS и роутеры попадают в Loki как
+  IP-адреса.
+- `syslog-time-format=iso8601` — время с часовым поясом, без сдвига на
+  разницу между роутером и сервером.
+- `add-topics-string=yes` — в заголовок попадает список тем, например
+  `wireless,info`.
+
+Правила создаются командами:
+
+```bash
+/system logging add topics=info action=memory
+/system logging add topics=error action=disk
+/system logging add topics=warning action=disk
+/system logging add topics=critical action=disk
+```
+
+Проверить, что всё применилось:
+
+```bash
+/system logging print
+/system logging action print where name=remote
+```
+
+### Метки в Loki
+
+Promtail раскладывает сообщения по меткам:
+
+| Метка | Пример | Откуда берётся |
+|---|---|---|
+| `routerboard` | `gateway` | имя роутера из syslog |
+| `topic` | `wireless` | первая тема сообщения |
+| `topics` | `wireless,info` | полный список тем |
+| `severity` | `error` | важность сообщения |
+
+На приёме отбрасываются служебные строки: `user prometheus logged in/out`
+(переподключения mktxp к API) и `-- MARK --` (маркер syslog-ng).
+
+### Проверка
+
+Отправить тестовое сообщение с роутера:
+
+```bash
+/log info "проверка логирования"
+```
+
+Через несколько секунд оно должно появиться в Grafana в дашборде «Логи»
+(`/d/logs`) с метками `routerboard`, `topic` и `severity`.
+
+Проверить напрямую в Loki:
+
+```bash
+curl -s -G 'http://10.0.0.9:3100/loki/api/v1/query_range' \
+  --data-urlencode 'query={job="syslog"} |= "проверка логирования"' \
+  --data-urlencode 'limit=5'
+```
+
+Проверить, что все роутеры на связи:
+
+```bash
+curl -s -G 'http://10.0.0.9:3100/loki/api/v1/query' \
+  --data-urlencode 'query=sum by (routerboard) (count_over_time({job="syslog"}[1h]))'
+```
+
+### Дашборды
+
+- «Дом» (`/d/dom`) — общий обзор, внизу счётчики ошибок и предупреждений
+  за сутки и ссылка на «Логи».
+- «Логи» (`/d/logs`) — ошибки и предупреждения за сутки, объём по уровням и
+  роутерам, топ тем, сводная таблица ошибок, живые потоки с фильтрами по
+  роутеру, уровню, теме и тексту.
+
+Если логи не приходят, проверять по порядку: `/system logging print` на
+роутере, доступность `10.0.0.9:514/udp`, `docker logs syslog-ng`,
+`docker logs promtail`, затем запрос в Loki.
+
+## Генераторы дашбордов
+
+JSON дашбордов «Дом» и «Логи» собираются Python-скриптами из каталога
+`tools/`. Править JSON руками не нужно: изменения вносятся в скрипт, после
+чего файл пересобирается.
+
+```bash
+python3 tools/gen_home_dash.py
+python3 tools/gen_logs_dash.py
+```
+
+Grafana подхватывает изменённые файлы провижининга в течение 10 секунд.
+Подробности, структура дашбордов и порядок отката — в
+[`tools/README.md`](tools/README.md).
+
 ## Ресурсы
 
 Проект собран на основе двух репозиториев:
