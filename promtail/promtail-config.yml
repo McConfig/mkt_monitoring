@@ -37,3 +37,6 @@ scrape_configs:
     # mktxp переподключается к API и засоряет журнал парами строк на каждое подключение
     - drop:
         expression: 'user prometheus logged (in|out)'
+    # syslog-ng раз в 20 минут шлёт собственный маркер в общий поток
+    - drop:
+        expression: '^-- MARK --$'
