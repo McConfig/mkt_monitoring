@@ -285,6 +285,166 @@ Portainer монтирует `/var/run/docker.sock`, то есть получа�
 - после смены пароля администратора старый пароль перестаёт действовать
   сразу, сессии других браузеров нужно завершить в разделе My account.
 
+## Доступ снаружи по HTTPS
+
+Grafana доступна из интернета по адресу `https://grafana.q1w2e3.ru`. Схема:
+
+```
+браузер → https://grafana.q1w2e3.ru:443 → роутер MikroTik (TLS-терминация)
+        → http://10.0.0.9:3003 → Grafana
+```
+
+DNS-запись `grafana.q1w2e3.ru` указывает на внешний адрес роутера
+`37.192.117.229`. Обратный прокси и сертификат Let's Encrypt настроены на
+самом роутере (RouterOS 7.25, встроенные `/ip reverse-proxy` и ACME-клиент),
+поэтому отдельный контейнер с nginx или Caddy не нужен.
+
+Из локальной сети по имени `grafana.q1w2e3.ru` запрос идёт тем же путём:
+адрес принадлежит роутеру, пакет попадает в цепочку `input`, а не в
+`forward`, поэтому NAT-loopback не требуется. Прямой доступ
+`http://10.0.0.9:3003` тоже работает и не закрывается.
+
+### Что настроено на роутере
+
+1. В цепочке `input` разрешены 80 и 443 с WAN — перед правилом
+   `defconf: drop all not coming from LAN`.
+2. Выпущен сертификат Let's Encrypt на `grafana.q1w2e3.ru` через ACME.
+3. Служба `reverse-proxy` включена и слушает 443.
+4. Создано правило прокси: SNI `grafana.q1w2e3.ru` → `10.0.0.9:3003`.
+
+Команды для повторения на чистом роутере (RouterOS 7.25):
+
+```bash
+/ip firewall filter add chain=input action=accept protocol=tcp dst-port=80 \
+  in-interface-list=WAN place-before=[find comment="defconf: drop all not coming from LAN"] \
+  comment="ACME HTTP-01 Let's Encrypt"
+
+/ip firewall filter add chain=input action=accept protocol=tcp dst-port=443 \
+  in-interface-list=WAN place-before=[find comment="defconf: drop all not coming from LAN"] \
+  comment="HTTPS reverse-proxy Grafana"
+
+/certificate add-acme name=grafana.q1w2e3.ru \
+  directory-url=https://acme-v02.api.letsencrypt.org/directory \
+  domain-names=grafana.q1w2e3.ru
+
+# дождаться выдачи, проверить статус
+/certificate print detail where name~"grafana"
+
+/ip service set reverse-proxy certificate=grafana.q1w2e3.ru disabled=no
+
+/ip reverse-proxy add sni=grafana.q1w2e3.ru ip-address=10.0.0.9 port=3003 \
+  certificate=grafana.q1w2e3.ru comment="Grafana on raspberry"
+```
+
+Служба `www` должна быть включена: встроенный ACME в RouterOS проверяет домен
+методом HTTP-01, то есть Let's Encrypt обращается к
+`http://grafana.q1w2e3.ru/.well-known/acme-challenge/...` на порт 80, и
+отвечает на этот запрос именно служба `www`. Если её выключить, ACME
+возвращает ошибку `connection refused`.
+
+### Сертификат и продление
+
+Сертификат выпускается на 90 дней и продлевается автоматически, когда
+истекает 80% срока. Для продления порт 80 должен оставаться доступен из
+интернета. Текущее состояние проверяется командой:
+
+```bash
+/certificate print detail where name~"grafana"
+```
+
+В поле `acme-status` будет либо `next update at 2027-01-11T03:29:29Z`, либо
+текст ошибки. Правило прокси и служба ссылаются на сертификат по имени,
+поэтому после продления ничего менять не нужно.
+
+### Проверка
+
+С сервера во внешней сети (в примере — VPS `185.42.163.200`):
+
+```bash
+openssl s_client -connect grafana.q1w2e3.ru:443 -servername grafana.q1w2e3.ru </dev/null 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates
+```
+
+Ожидаемый результат:
+
+```
+subject=CN=grafana.q1w2e3.ru
+issuer=C=US, O=Let's Encrypt, CN=YR1
+notBefore=Oct 31 03:29:30 2026 GMT
+notAfter=Jan 29 03:29:29 2027 GMT
+```
+
+Проверка цепочки и ответа Grafana:
+
+```bash
+echo | openssl s_client -connect grafana.q1w2e3.ru:443 -servername grafana.q1w2e3.ru 2>/dev/null | grep "Verify return code"
+curl -sI https://grafana.q1w2e3.ru | head -3
+```
+
+Ожидаемый результат: `Verify return code: 0 (ok)` и
+`HTTP/1.1 302 Found` с `Location: /login`. В браузере открыть
+`https://grafana.q1w2e3.ru`, войти под администратором.
+
+### Настройки Grafana
+
+В `docker-compose.yml` у сервиса `grafana` заданы:
+
+```yaml
+      GF_SERVER_ROOT_URL: https://grafana.q1w2e3.ru/
+      GF_SERVER_DOMAIN: grafana.q1w2e3.ru
+```
+
+Они нужны, чтобы ссылки в письмах, редиректы после входа и ссылки
+«поделиться» указывали на внешний HTTPS-адрес, а не на `localhost`.
+После изменения этих переменных перезапустить только Grafana:
+
+```bash
+cd ~/lab/mkt_monitoring
+docker compose up -d grafana
+```
+
+### Диагностика
+
+- `acme-status` содержит `connection refused` — выключена служба `www` или нет
+  правила файрвола для порта 80.
+- `acme-status` содержит ошибку DNS — роутер не может разрешить имя, проверить
+  `/ip dns print` и `:resolve grafana.q1w2e3.ru`.
+- Сертификат есть, но браузер показывает ошибку — проверить, что в правиле
+  `/ip reverse-proxy` указан `certificate=grafana.q1w2e3.ru`, а не `none`.
+- Прокси отвечает, но Grafana не открывается — проверить
+  `curl -I http://10.0.0.9:3003` и `docker logs grafana`.
+- Логи самого прокси и ACME: `/log print where topics~"acme"` и
+  `/log print where topics~"rproxy"`.
+
+### Ограничения и безопасность
+
+- Порт 80 занят службой `www`, поэтому `http://grafana.q1w2e3.ru` открывает
+  страницу входа WebFig, а не перенаправляет на HTTPS. Порт 80 нужен для
+  продления сертификата, поэтому просто выключить `www` нельзя.
+- WebFig доступен из интернета по HTTP. Пароль администратора роутера должен
+  быть длинным и уникальным, не таким, как пароли сервисов.
+- Grafana доступна из интернета по паролю. Рекомендуется длинный уникальный
+  пароль и включённая двухфакторная аутентификация в профиле пользователя.
+- Встроенный прокси RouterOS работает по HTTP/1.1 и не поддерживает
+  WebSocket, поэтому Grafana Live (живое обновление панелей) может не
+  работать. Дашборды, графики и логи работают.
+
+### Как отключить доступ снаружи
+
+```bash
+/ip reverse-proxy disable [find sni="grafana.q1w2e3.ru"]
+/ip service disable reverse-proxy
+/ip firewall filter remove [find comment~"ACME HTTP-01|HTTPS reverse-proxy"]
+```
+
+Службу `www` выключать только вместе с ACME-клиентом, иначе перестанет
+продлеваться сертификат:
+
+```bash
+/certificate remove [find name~"grafana"]
+/ip service disable www
+```
+
 ## Логи роутеров
 
 Все роутеры отправляют журналы на сервер мониторинга по syslog. Цепочка:
