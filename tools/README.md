@@ -3,14 +3,16 @@
 ## Назначение
 
 В каталоге лежат два Python-скрипта, которые собирают JSON-файлы дашбордов
-для провижининга Grafana. JSON-файлы лежат в
+для провижининга Grafana, и один bash-скрипт для добавления сайтов на
+обратный прокси роутера. JSON-файлы дашбордов лежат в
 `grafana/provisioning/dashboards/home/` и подхватываются Grafana автоматически.
 Скрипты — источник правды: панели правятся в коде, а не в интерфейсе Grafana.
 
-| Скрипт | Что собирает | Куда пишет |
+| Скрипт | Что делает | Куда пишет |
 |---|---|---|
-| `gen_home_dash.py` | дашборд «Дом» (uid `dom`) | `grafana/provisioning/dashboards/home/home.json` |
-| `gen_logs_dash.py` | дашборд «Логи» (uid `logs`) | `grafana/provisioning/dashboards/home/logs.json` |
+| `gen_home_dash.py` | собирает дашборд «Дом» (uid `dom`) | `grafana/provisioning/dashboards/home/home.json` |
+| `gen_logs_dash.py` | собирает дашборд «Логи» (uid `logs`) | `grafana/provisioning/dashboards/home/logs.json` |
+| `add-site.sh` | выпускает сертификат и создаёт правило reverse-proxy на роутере | ничего не пишет, меняет только роутер |
 
 Оба дашборда попадают в папку «Дом» (провайдер
 `grafana/provisioning/dashboards/home.yml`).
@@ -159,3 +161,21 @@ Alloy раскладывает сообщения RouterOS по меткам:
 
 Служебные строки `user prometheus logged in/out` (переподключения mktxp) и
 `-- MARK --` (маркер syslog-ng) отбрасываются на приёме.
+
+## add-site.sh — добавление сайта на обратный прокси
+
+Скрипт выпускает сертификат Let's Encrypt на роутере и создаёт правило
+`/ip reverse-proxy`. Подробная инструкция с проверками — в корневом
+`README.md`, раздел «Добавление нового сайта».
+
+Краткая справка:
+
+```bash
+./tools/add-site.sh --help
+./tools/add-site.sh --dry-run home.q1w2e3.ru 10.0.0.9 8123 "Home Assistant"
+./tools/add-site.sh home.q1w2e3.ru 10.0.0.9 8123 "Home Assistant"
+```
+
+Требования: SSH-ключ к роутеру (пользователь `mcconfig`), A-запись имени на
+внешний адрес роутера, открытый порт 80 с WAN. Скрипт ничего не пишет в
+репозиторий и не хранит секретов.

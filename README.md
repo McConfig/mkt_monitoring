@@ -308,11 +308,21 @@ DNS-запись `grafana.q1w2e3.ru` указывает на внешний ад
 
 1. В цепочке `input` разрешены 80 и 443 с WAN — перед правилом
    `defconf: drop all not coming from LAN`.
-2. Выпущен сертификат Let's Encrypt на `grafana.q1w2e3.ru` через ACME.
-3. Служба `reverse-proxy` включена и слушает 443.
-4. Создано правило прокси: SNI `grafana.q1w2e3.ru` → `10.0.0.9:3003`.
+2. Порт 80 нужен только для проверки домена методом HTTP-01. На нём
+   оставлен только ACME: WebFig, REST API, графики, CRL и SCEP по HTTP
+   выключены. Любой другой запрос на 80 получает `403 Forbidden`.
+3. Выпущен сертификат Let's Encrypt на `grafana.q1w2e3.ru` через ACME.
+4. Служба `reverse-proxy` включена и слушает 443.
+5. Создано правило прокси: SNI `grafana.q1w2e3.ru` → `10.0.0.9:3003`.
 
-Команды для повторения на чистом роутере (RouterOS 7.25):
+Служба `www` должна быть включена: встроенный ACME в RouterOS проверяет домен
+методом HTTP-01, то есть Let's Encrypt обращается к
+`http://grafana.q1w2e3.ru/.well-known/acme-challenge/...` на порт 80, и
+отвечает на этот запрос именно служба `www`. Если её выключить, ACME
+возвращает ошибку `connection refused`.
+
+Команды для повторения на чистом роутере (RouterOS 7.25). Все шаги с
+проверками автоматизирует `tools/add-site.sh`, ниже — что именно он делает:
 
 ```bash
 /ip firewall filter add chain=input action=accept protocol=tcp dst-port=80 \
@@ -323,11 +333,17 @@ DNS-запись `grafana.q1w2e3.ru` указывает на внешний ад
   in-interface-list=WAN place-before=[find comment="defconf: drop all not coming from LAN"] \
   comment="HTTPS reverse-proxy Grafana"
 
+# на 80 оставляем только ACME, остальное закрываем
+/ip service webserver set webfig-plain=no index-plain=no graphs-plain=no \
+  rest-plain=no crl-plain=no scep-plain=no
+/ip service webserver print
+
+# выпуск сертификата, имя сертификата должно совпадать с именем хоста
 /certificate add-acme name=grafana.q1w2e3.ru \
   directory-url=https://acme-v02.api.letsencrypt.org/directory \
   domain-names=grafana.q1w2e3.ru
 
-# дождаться выдачи, проверить статус
+# дождаться выдачи (обычно 30-60 секунд), проверить статус
 /certificate print detail where name~"grafana"
 
 /ip service set reverse-proxy certificate=grafana.q1w2e3.ru disabled=no
@@ -336,11 +352,111 @@ DNS-запись `grafana.q1w2e3.ru` указывает на внешний ад
   certificate=grafana.q1w2e3.ru comment="Grafana on raspberry"
 ```
 
-Служба `www` должна быть включена: встроенный ACME в RouterOS проверяет домен
-методом HTTP-01, то есть Let's Encrypt обращается к
-`http://grafana.q1w2e3.ru/.well-known/acme-challenge/...` на порт 80, и
-отвечает на этот запрос именно служба `www`. Если её выключить, ACME
-возвращает ошибку `connection refused`.
+Правило `/ip reverse-proxy` можно создать только после того, как сертификат с
+таким именем появился в `/certificate`. Поэтому порядок именно такой: сначала
+ACME, потом правило.
+
+### Добавление нового сайта
+
+Новый сайт добавляется одной командой: скрипт сам выпускает сертификат и
+создаёт правило прокси.
+
+Что должно быть готово до запуска:
+
+1. A-запись `<host>` указывает на внешний адрес роутера `37.192.117.229`.
+   Проверка с любого компьютера:
+   ```bash
+   dig +short A <host> @1.1.1.1
+   ```
+   Ожидается `37.192.117.229`. Если запись ещё не добавилась, подождите
+   обновления DNS (обычно 5-30 минут, иногда до нескольких часов).
+   В зоне `q1w2e3.ru` есть wildcard-запись `*.q1w2e3.ru` на старый адрес
+   `37.192.126.52`. Для нового имени обязательно создать явную A-запись на
+   `37.192.117.229`, иначе проверка DNS в скрипте не пройдёт.
+2. Бэкенд отвечает с роутера по адресу `<ip>:<port>`. Проверка с малинки:
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' http://<ip>:<port>/
+   ```
+   Ожидается любой код ответа, кроме `000`. `000` означает, что соединения
+   нет.
+3. Порт 80 открыт с WAN, служба `www` включена, `acme-plain=yes`. Это уже
+   настроено, проверка:
+   ```bash
+   ssh mcconfig@10.0.0.1 '/ip service webserver print'
+   ```
+
+Запуск на малинке (там лежит репозиторий и SSH-ключ к роутеру):
+
+```bash
+cd ~/lab/mkt_monitoring
+./tools/add-site.sh <host> <ip> <port> "Комментарий"
+```
+
+Пример:
+
+```bash
+./tools/add-site.sh home.q1w2e3.ru 10.0.0.9 8123 "Home Assistant"
+```
+
+Ожидаемый вывод:
+
+```
+роутер: mcconfig@10.0.0.1
+DNS: home.q1w2e3.ru -> 37.192.117.229
+создаю ACME-клиент для home.q1w2e3.ru
+жду выпуск сертификата, обычно 30-60 секунд (максимум 180)
+сертификат выпущен: next update at 2027-01-11T13:41:37Z
+создаю правило reverse-proxy
+готово: https://home.q1w2e3.ru -> http://10.0.0.9:8123
+сертификат, который отдаёт роутер:
+subject=CN=home.q1w2e3.ru
+notAfter=Jan 29 13:41:37 2027 GMT
+ответ https://home.q1w2e3.ru/: 302
+```
+
+Проверка вручную:
+
+```bash
+curl -sI https://<host>/ | head -3
+echo | openssl s_client -connect <host>:443 -servername <host> 2>/dev/null \
+  | grep "Verify return code"
+```
+
+Ожидается ответ бэкенда (любой код) и `Verify return code: 0 (ok)`.
+
+Что делает скрипт:
+
+1. Проверяет аргументы, наличие A-записи и её совпадение с внешним адресом
+   роутера.
+2. Проверяет, что правила и сертификата с таким именем ещё нет.
+3. Выполняет `/certificate add-acme ...` и ждёт статус `next update at ...`
+   до 180 секунд.
+4. Создаёт правило `/ip reverse-proxy` с `certificate=<host>`.
+5. Проверяет HTTPS и печатает итог.
+
+Полезные режимы:
+
+```bash
+./tools/add-site.sh --dry-run <host> <ip> <port>   # только показать команды
+FORCE=1 ./tools/add-site.sh <host> <ip> <port>     # не сверять DNS с WAN
+ROUTER_USER=admin ./tools/add-site.sh <host> <ip> <port>  # другой пользователь SSH
+```
+
+Удаление сайта:
+
+```bash
+ssh mcconfig@10.0.0.1 \
+  '/ip reverse-proxy remove [find sni="<host>"]; /certificate remove [find name="<host>"]'
+```
+
+Ограничения:
+
+- один сертификат — одно имя; wildcard через HTTP-01 не выпускается, для
+  wildcard нужен DNS-01 и доступ к API DNS-провайдера;
+- если A-запись неверная, скрипт завершится ошибкой и удалит ACME-запись,
+  чтобы после исправления DNS можно было просто повторить запуск;
+- Let's Encrypt ограничивает количество одинаковых сертификатов (5 в неделю),
+  не запускайте скрипт повторно без необходимости.
 
 ### Сертификат и продление
 
@@ -352,20 +468,43 @@ DNS-запись `grafana.q1w2e3.ru` указывает на внешний ад
 /certificate print detail where name~"grafana"
 ```
 
-В поле `acme-status` будет либо `next update at 2027-01-11T03:29:29Z`, либо
-текст ошибки. Правило прокси и служба ссылаются на сертификат по имени,
-поэтому после продления ничего менять не нужно.
+В поле `acme-status` будет либо `next update at 2027-01-11T...Z`, либо текст
+ошибки. Ближайшее продление `grafana.q1w2e3.ru` — 11.01.2027, текущий
+сертификат действует до 29.01.2027.
+
+Важно: в RouterOS 7.25 есть ошибка — после автоматического продления службы
+продолжают отдавать предыдущий сертификат. В changelog 7.26beta4 от
+27.10.2026 это исправлено:
+
+```
+*) certificate - fix services continuing to use the previous certificate after ACME renewal;
+```
+
+Пока роутер не обновлён, сертификат в хранилище обновляется, но обратный
+прокси начинает отдавать его только после перезагрузки. План — обновиться до
+стабильной 7.26 до 11.01.2027, порядок в разделе «Обновление до RouterOS
+7.26».
+
+Если сертификат нужно продлить вручную:
+
+```bash
+/certificate acme-renew [find name="grafana.q1w2e3.ru"]
+```
+
+После продления на 7.25 перезагрузить роутер (простой около минуты), иначе
+прокси продолжит отдавать старый сертификат.
 
 ### Проверка
 
 С сервера во внешней сети (в примере — VPS `185.42.163.200`):
 
 ```bash
-openssl s_client -connect grafana.q1w2e3.ru:443 -servername grafana.q1w2e3.ru </dev/null 2>/dev/null \
+echo | openssl s_client -connect grafana.q1w2e3.ru:443 \
+  -servername grafana.q1w2e3.ru 2>/dev/null \
   | openssl x509 -noout -subject -issuer -dates
 ```
 
-Ожидаемый результат:
+Ожидаемый результат (даты зависят от даты выпуска):
 
 ```
 subject=CN=grafana.q1w2e3.ru
@@ -377,7 +516,8 @@ notAfter=Jan 29 03:29:29 2027 GMT
 Проверка цепочки и ответа Grafana:
 
 ```bash
-echo | openssl s_client -connect grafana.q1w2e3.ru:443 -servername grafana.q1w2e3.ru 2>/dev/null | grep "Verify return code"
+echo | openssl s_client -connect grafana.q1w2e3.ru:443 \
+  -servername grafana.q1w2e3.ru 2>/dev/null | grep "Verify return code"
 curl -sI https://grafana.q1w2e3.ru | head -3
 ```
 
@@ -409,25 +549,91 @@ docker compose up -d grafana
   правила файрвола для порта 80.
 - `acme-status` содержит ошибку DNS — роутер не может разрешить имя, проверить
   `/ip dns print` и `:resolve grafana.q1w2e3.ru`.
+- `http://<host>/` открывает страницу входа WebFig — кто-то включил
+  `webfig-plain`. Выключить: `/ip service webserver set webfig-plain=no`.
 - Сертификат есть, но браузер показывает ошибку — проверить, что в правиле
-  `/ip reverse-proxy` указан `certificate=grafana.q1w2e3.ru`, а не `none`.
-- Прокси отвечает, но Grafana не открывается — проверить
-  `curl -I http://10.0.0.9:3003` и `docker logs grafana`.
-- Логи самого прокси и ACME: `/log print where topics~"acme"` и
+  `/ip reverse-proxy` указан `certificate=<host>`, а не `none`, и что имя
+  совпадает с именем сертификата.
+- Сертификат в `/certificate` новый, а отдаётся старый — это ошибка 7.25,
+  нужна перезагрузка или обновление до 7.26.
+- Прокси отвечает, но бэкенд не открывается — проверить
+  `curl -I http://<ip>:<port>` с малинки и логи сервиса.
+- Логи прокси и ACME: `/log print where topics~"acme"` и
   `/log print where topics~"rproxy"`.
 
 ### Ограничения и безопасность
 
-- Порт 80 занят службой `www`, поэтому `http://grafana.q1w2e3.ru` открывает
-  страницу входа WebFig, а не перенаправляет на HTTPS. Порт 80 нужен для
-  продления сертификата, поэтому просто выключить `www` нельзя.
-- WebFig доступен из интернета по HTTP. Пароль администратора роутера должен
-  быть длинным и уникальным, не таким, как пароли сервисов.
+- Порт 80 открыт с WAN, но на нём работает только ACME. WebFig, REST API,
+  графики, CRL и SCEP по HTTP выключены, все прочие запросы получают
+  `403 Forbidden`. Раньше страница входа WebFig была доступна из интернета —
+  это закрыто.
+- WebFig по HTTPS недоступен: 443 занят обратным прокси. Управление
+  роутером — Winbox (8291) или SSH (22), оба доступны только из локальной
+  сети.
+- Если WebFig по HTTP всё-таки нужен, включить его можно командой
+  `/ip service webserver set webfig-plain=yes`, но тогда страница входа снова
+  будет открыта из интернета. Лучше этого не делать.
+- Приватные ключи сертификатов хранятся на роутере в `/certificate` и в git
+  не попадают.
 - Grafana доступна из интернета по паролю. Рекомендуется длинный уникальный
   пароль и включённая двухфакторная аутентификация в профиле пользователя.
 - Встроенный прокси RouterOS работает по HTTP/1.1 и не поддерживает
   WebSocket, поэтому Grafana Live (живое обновление панелей) может не
   работать. Дашборды, графики и логи работают.
+
+### Обновление до RouterOS 7.26
+
+Зачем: в 7.25 службы не перечитывают сертификат после продления (см. раздел
+«Сертификат и продление»). В 7.26beta4 ошибка исправлена. Обновиться нужно до
+11.01.2027 — даты следующего продления сертификата.
+
+Когда выйдет стабильная 7.26:
+
+1. Сделать резервные копии:
+   ```bash
+   /export file=before-7.26
+   /system backup save name=before-7.26
+   ```
+   Файлы появятся в `/file print`.
+2. Проверить текущую версию и канал обновлений:
+   ```bash
+   /system resource print
+   /system package update print
+   ```
+3. Проверить обновления:
+   ```bash
+   /system package update set channel=stable
+   /system package update check-for-updates
+   ```
+4. Установить:
+   ```bash
+   /system package update install
+   ```
+   Роутер перезагрузится, интернет пропадёт на 1-2 минуты.
+5. После загрузки проверить версию и сертификат:
+   ```bash
+   /system resource print
+   /certificate print detail where name~"grafana"
+   ```
+   Ожидается `version: 7.26`, сертификат на месте.
+6. Проверить HTTPS снаружи и из локальной сети:
+   ```bash
+   curl -sI https://grafana.q1w2e3.ru/ | head -3
+   echo | openssl s_client -connect grafana.q1w2e3.ru:443 \
+     -servername grafana.q1w2e3.ru 2>/dev/null | grep "Verify return code"
+   ```
+7. Проверить VPN, BGP и мониторинг: `curl -s http://10.0.0.9:9090/-/healthy`
+   и дашборды Grafana.
+
+Если стабильная 7.26 не выйдет до 05.01.2027, есть два варианта:
+
+- обновиться на 7.26beta (фикс уже есть), понимая риск беты на домашнем
+  шлюзе;
+- остаться на 7.25, продлить сертификат вручную и перезагрузить роутер.
+
+Откат: восстановить конфигурацию из `before-7.26.backup`
+(`/system backup load name=before-7.26`) или переустановить пакет старой
+версии, если он сохранён в `/file`.
 
 ### Как отключить доступ снаружи
 
@@ -443,6 +649,12 @@ docker compose up -d grafana
 ```bash
 /certificate remove [find name~"grafana"]
 /ip service disable www
+```
+
+После отключения вернуть WebFig по HTTP, если он нужен:
+
+```bash
+/ip service webserver set webfig-plain=yes index-plain=yes
 ```
 
 ## Логи роутеров
