@@ -148,14 +148,14 @@ Grafana вернёт предыдущую версию в течение 10 се
 
 ## Соглашения по меткам Loki
 
-Promtail раскладывает сообщения RouterOS по меткам:
+Alloy раскладывает сообщения RouterOS по меткам:
 
 | Метка | Пример | Откуда берётся |
 |---|---|---|
 | `routerboard` | `gateway` | hostname в syslog-заголовке (имя роутера) |
 | `topic` | `wireless` | первая тема из списка RouterOS |
 | `topics` | `wireless,info` | полный список тем |
-| `severity` | `error`, `informational` | важность из syslog-заголовка |
+| `severity` | `error`, `warning`, `info` | важность из syslog-заголовка, `informational` приводится к `info` |
 
 Служебные строки `user prometheus logged in/out` (переподключения mktxp) и
 `-- MARK --` (маркер syslog-ng) отбрасываются на приёме.

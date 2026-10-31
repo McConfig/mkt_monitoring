@@ -1,6 +1,6 @@
 ## Описание
 
-Этот проект представляет собой готовый стек для мониторинга устройств Mikrotik через API на основе Docker, который использует Grafana, Prometheus, [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) и [MKTXP Exporter](https://github.com/akpw/mktxp). Так же он включает в себя централизованную обработку журналов Mikrotik на основе предварительно настроенного стека [syslog-ng](https://www.syslog-ng.com/) / [promtail](https://grafana.com/docs/loki/latest/clients/promtail/) / [Loki](https://grafana.com/docs/loki/latest).
+Этот проект представляет собой готовый стек для мониторинга устройств Mikrotik через API на основе Docker, который использует Grafana, Prometheus, [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) и [MKTXP Exporter](https://github.com/akpw/mktxp). Так же он включает в себя централизованную обработку журналов Mikrotik на основе предварительно настроенного стека [syslog-ng](https://www.syslog-ng.com/) / [Grafana Alloy](https://grafana.com/docs/alloy/latest/) / [Loki](https://grafana.com/docs/loki/latest).
 
 ## Функции
 - Мониторинг работы системы
@@ -179,9 +179,20 @@ docker-compose up -d
 ## Логи роутеров
 
 Все роутеры отправляют журналы на сервер мониторинга по syslog. Цепочка:
-RouterOS → syslog-ng (`10.0.0.9:514/udp`) → promtail (`:1514`) → Loki →
+RouterOS → syslog-ng (`10.0.0.9:514/udp`) → Alloy (`:1514`) → Loki →
 Grafana. Локально на роутерах остаются память и диск, поэтому журнал доступен
 и без сервера.
+
+Конфигурация приёма логов лежит в `alloy/config.alloy`. Компоненты:
+
+- `loki.source.syslog.routers` — слушает TCP `0.0.0.0:1514`, разбирает
+  RFC5424, сохраняет время из сообщения, помечает поток меткой `job="syslog"`;
+- `loki.relabel.routers` — переносит служебные метки syslog в обычные
+  (`routerboard`, `syslog_host`, `topic`, `topics`, `severity`) и заменяет
+  уровень `informational` на `info`;
+- `loki.process.routers` — отбрасывает служебные строки mktxp и маркер
+  syslog-ng;
+- `loki.write.default` — отправляет записи в `http://loki:3100/loki/api/v1/push`.
 
 ### Что настроено на роутерах
 
@@ -232,7 +243,7 @@ Grafana. Локально на роутерах остаются память и
 
 ### Метки в Loki
 
-Promtail раскладывает сообщения по меткам:
+Alloy раскладывает сообщения по меткам:
 
 | Метка | Пример | Откуда берётся |
 |---|---|---|
@@ -280,7 +291,22 @@ curl -s -G 'http://10.0.0.9:3100/loki/api/v1/query' \
 
 Если логи не приходят, проверять по порядку: `/system logging print` на
 роутере, доступность `10.0.0.9:514/udp`, `docker logs syslog-ng`,
-`docker logs promtail`, затем запрос в Loki.
+`docker logs alloy`, затем запрос в Loki.
+
+Отдельно проверяется, что Alloy принимает записи и отправляет их в Loki:
+
+```bash
+curl -s http://10.0.0.9:9080/metrics | grep -E 'loki_source_syslog_entries_total|loki_write_sent_entries_total|loki_process_dropped_lines_total'
+```
+
+Ожидаемый результат: растущие счётчики `loki_source_syslog_entries_total` и
+`loki_write_sent_entries_total`, а `loki_process_dropped_lines_total` растёт
+только на служебных строках mktxp и маркере syslog-ng.
+
+Если после перезапуска Alloy логи перестали поступать, перезапустить
+syslog-ng: `docker restart syslog-ng`. В конфиге syslog-ng выставлены
+`keep-alive(yes)` и `time-reopen(10)`, обычно переподключение происходит
+самостоятельно в течение десяти секунд.
 
 ## Генераторы дашбордов
 

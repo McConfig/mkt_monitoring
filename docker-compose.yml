@@ -4,6 +4,14 @@ networks:
 volumes:
   prometheus_storage: {}
   grafana_storage: {}
+  loki_storage: {}
+  alloy_storage: {}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "2"
 
 services:
   mktxp:
@@ -14,7 +22,8 @@ services:
       - './mktxp/:/root/mktxp/'
     networks:
       monitoring: null
-    restart: unless-stopped  
+    restart: unless-stopped
+    logging: *default-logging
 
   grafana:
     container_name: grafana
@@ -24,7 +33,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_USERS_DEFAULT_THEME: "dark"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/home/home.json
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.3.0
     networks:
       monitoring: null
     ports:
@@ -32,6 +41,7 @@ services:
       published: 3003
       target: 3000
     restart: unless-stopped
+    logging: *default-logging
     volumes:
     -  grafana_storage:/var/lib/grafana
     - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
@@ -48,14 +58,16 @@ services:
       published: 3100
       target: 3100
     restart: unless-stopped
+    logging: *default-logging
     volumes:
     - ./loki/loki-config.yml:/etc/loki/loki-config.yml
+    - loki_storage:/tmp/loki
 
   prometheus:
     command:
     - --config.file=/etc/prometheus/prometheus.yml
     - --storage.tsdb.path=/prometheus
-    - --storage.tsdb.retention.time=1y
+    - --storage.tsdb.retention.time=7d
     - --web.enable-admin-api
     - --web.enable-lifecycle
     container_name: prometheus
@@ -66,14 +78,19 @@ services:
     - published: 9090
       target: 9090
     restart: unless-stopped
+    logging: *default-logging
     volumes:
     - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - prometheus_storage:/prometheus
 
-  promtail:
-    command: -config.file=/etc/promtail/promtail-config.yml
-    container_name: promtail
-    image: grafana/promtail:latest
+  alloy:
+    command:
+    - run
+    - /etc/alloy/config.alloy
+    - --server.http.listen-addr=0.0.0.0:9080
+    - --storage.path=/var/lib/alloy/data
+    container_name: alloy
+    image: grafana/alloy:v1.21.3
     networks:
       monitoring: null
     ports:
@@ -84,14 +101,16 @@ services:
       published: 9080
       target: 9080
     restart: unless-stopped
+    logging: *default-logging
     volumes:
-    - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+    - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+    - alloy_storage:/var/lib/alloy/data
 
   syslog-ng:
     command: -edv
     container_name: syslog-ng
     depends_on:
-    - promtail
+    - alloy
     image: balabit/syslog-ng:latest
     networks:
       monitoring: null
@@ -103,9 +122,10 @@ services:
       published: 601
       target: 601
     restart: unless-stopped
+    logging: *default-logging
     volumes:
     - ./syslog-ng/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
-  
+
   blackbox:
     image: quay.io/prometheus/blackbox-exporter:latest
     container_name: blackbox-exporter
@@ -119,3 +139,4 @@ services:
         published: 9115
         target: 9115
     restart: unless-stopped
+    logging: *default-logging

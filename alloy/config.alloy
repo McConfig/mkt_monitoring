@@ -1,0 +1,82 @@
+// Приём syslog от syslog-ng и отправка в Loki.
+// Заменяет promtail/promtail-config.yml.
+
+loki.source.syslog "routers" {
+  listener {
+    address                = "0.0.0.0:1514"
+    protocol               = "tcp"
+    idle_timeout           = "600s"
+    use_incoming_timestamp = true
+    label_structured_data  = true
+    labels                 = { job = "syslog" }
+  }
+
+  relabel_rules = loki.relabel.routers.rules
+  forward_to    = [loki.process.routers.receiver]
+}
+
+loki.relabel "routers" {
+  // Правила используются только через relabel_rules, приёмник не нужен
+  forward_to = []
+
+  // Имя роутера из syslog-заголовка
+  rule {
+    source_labels = ["__syslog_message_hostname"]
+    target_label  = "routerboard"
+  }
+
+  // Имя хоста, с которого пришло соединение
+  rule {
+    source_labels = ["__syslog_connection_hostname"]
+    target_label  = "syslog_host"
+  }
+
+  // Первая тема RouterOS, например "wireless" из "wireless,info"
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    regex         = "^([a-z-]+).*"
+    target_label  = "topic"
+    replacement   = "$1"
+  }
+
+  // Полный список тем, например "system,info,account"
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    target_label  = "topics"
+  }
+
+  rule {
+    source_labels = ["__syslog_message_severity"]
+    target_label  = "severity"
+  }
+
+  // Alloy называет уровень info как informational, дашборды ждут info
+  rule {
+    source_labels = ["severity"]
+    regex         = "^informational$"
+    target_label  = "severity"
+    replacement   = "info"
+  }
+}
+
+loki.process "routers" {
+  // mktxp переподключается к API и засоряет журнал парами строк на каждое подключение
+  stage.drop {
+    expression          = "user prometheus logged (in|out)"
+    drop_counter_reason = "mktxp_noise"
+  }
+
+  // syslog-ng раз в 20 минут шлёт собственный маркер в общий поток
+  stage.drop {
+    expression          = "^-- MARK --$"
+    drop_counter_reason = "syslog_mark"
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
