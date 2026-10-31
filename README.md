@@ -1,6 +1,6 @@
 ## Описание
 
-Этот проект представляет собой готовый стек для мониторинга устройств Mikrotik через API на основе Docker, который использует Grafana, Prometheus, [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) и [MKTXP Exporter](https://github.com/akpw/mktxp). Так же он включает в себя централизованную обработку журналов Mikrotik на основе предварительно настроенного стека [syslog-ng](https://www.syslog-ng.com/) / [Grafana Alloy](https://grafana.com/docs/alloy/latest/) / [Loki](https://grafana.com/docs/loki/latest).
+Этот проект представляет собой готовый стек для мониторинга устройств Mikrotik через API на основе Docker, который использует Grafana, Prometheus, [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter) и [MKTXP Exporter](https://github.com/akpw/mktxp). Так же он включает в себя централизованную обработку журналов Mikrotik на основе предварительно настроенного стека [syslog-ng](https://www.syslog-ng.com/) / [Grafana Alloy](https://grafana.com/docs/alloy/latest/) / [Loki](https://grafana.com/docs/loki/latest). Для управления контейнерами в стек включён [Portainer](https://www.portainer.io/).
 
 ## Функции
 - Мониторинг работы системы
@@ -175,6 +175,115 @@ docker-compose up -d
 Как только контейнеры будут запущены, откройте в своем веб-браузере Grafana по адресу `http://server_ip:3003`
 
 Логин и пароль по умолчанию `admin`:`admin`
+
+## Portainer
+
+Portainer — веб-интерфейс для управления контейнерами, образами, томами и
+сетями Docker. В стеке он не обязателен: всё то же самое делается командами
+`docker compose`, но через браузер удобнее смотреть состояние контейнеров,
+читатель логи и перезапускать сервисы.
+
+Версия зафиксирована в `docker-compose.yml`:
+
+```yaml
+  portainer:
+    image: portainer/portainer-ce:2.45.3
+```
+
+### Первый запуск и создание администратора
+
+1. Проверить, что контейнер запущен:
+
+```bash
+docker ps --filter name=portainer --format '{{.Names}} {{.Status}} {{.Ports}}'
+```
+
+Ожидаемый результат — строка вида
+`portainer Up 2 minutes 0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp`.
+
+2. Получить одноразовый код настройки. Portainer 2.45 и новее при первом
+   старте печатает его в лог и требует ввести на экране создания
+   администратора:
+
+```bash
+docker logs portainer 2>&1 | grep -o 'setup_token=[a-f0-9]*' | tail -1
+```
+
+Ожидаемый вывод — строка вида
+`setup_token=d4b297cdc3a9d8478d1887d579e35def5c15d7b4d1db38bb354a782b43318909`.
+Код действует до создания первого администратора.
+
+3. Открыть в браузере `http://10.0.0.9:9000`, вставить код на экране Setup,
+   создать логин и пароль администратора. Пароль — не короче 12 символов.
+   После создания администратора код становится недействительным, дальше
+   вход идёт по логину и паролю.
+
+4. Проверить, что API отвечает и показывает версию:
+
+```bash
+curl -s http://10.0.0.9:9000/api/system/status
+```
+
+Ожидаемый результат: `{"Version":"2.45.3","InstanceID":"..."}`.
+
+### Где хранятся данные
+
+Пользователи, настройки, сертификаты и подключения Portainer лежат в томе
+`mkt_monitoring_portainer_data`, внутри контейнера это `/data`. На хосте том
+находится по пути
+`/var/lib/docker/volumes/mkt_monitoring_portainer_data/_data`.
+
+Том входит в бэкап `pi-backups` (файл `portainer_data.tar` в релизе), поэтому
+после переустановки системы администратора и настройки не нужно создавать
+заново.
+
+### Управление
+
+Запустить или обновить после правки `docker-compose.yml`:
+
+```bash
+cd ~/lab/mkt_monitoring
+docker compose up -d portainer
+```
+
+Остановить, не удаляя данные:
+
+```bash
+docker compose stop portainer
+```
+
+Посмотреть логи:
+
+```bash
+docker logs -f portainer
+```
+
+Полностью удалить контейнер и том с данными (необратимо):
+
+```bash
+docker compose rm -sf portainer
+docker volume rm mkt_monitoring_portainer_data
+```
+
+Проверить доступность веб-интерфейса:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://10.0.0.9:9000
+```
+
+Ожидаемый результат: `200`.
+
+### Безопасность
+
+Portainer монтирует `/var/run/docker.sock`, то есть получает те же права, что
+процесс Docker на хосте: через него можно запустить контейнер с доступом к
+любым файлам системы. Поэтому:
+
+- порт 9000 открыт только в локальной сети и не пробрасывается на роутере
+  наружу;
+- доступ к интерфейсу есть только у тех, кому доверено управление сервером;
+- после смены пароля администратора старый пароль перестаёт действовать
+  сразу, сессии других браузеров нужно завершить в разделе My account.
 
 ## Логи роутеров
 

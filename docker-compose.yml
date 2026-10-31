@@ -6,6 +6,7 @@ volumes:
   grafana_storage: {}
   loki_storage: {}
   alloy_storage: {}
+  portainer_data: {}
 
 x-logging: &default-logging
   driver: json-file
@@ -140,3 +141,19 @@ services:
         target: 9115
     restart: unless-stopped
     logging: *default-logging
+
+  portainer:
+    image: portainer/portainer-ce:2.45.3
+    container_name: portainer
+    command: --no-analytics
+    networks:
+      monitoring: null
+    ports:
+      - protocol: tcp
+        published: 9000
+        target: 9000
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
