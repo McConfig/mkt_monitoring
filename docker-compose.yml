@@ -17,7 +17,7 @@ x-logging: &default-logging
 services:
   mktxp:
     container_name: mktxp
-    image: ghcr.io/akpw/mktxp:latest
+    image: ghcr.io/akpw/mktxp:2.1.0
     user: root
     volumes:
       - './mktxp/:/root/mktxp/'
